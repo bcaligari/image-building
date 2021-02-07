@@ -1,0 +1,123 @@
+---
+- name: 'Provision Image'
+  hosts: default
+  become: false
+
+  tasks:
+    - name: wait for first boot tidyup
+      ansible.builtin.pause:
+        seconds: 120
+    
+    - name: freshen packages
+      block:
+        - name: refresh repositories
+          community.general.zypper_repository:
+            repo: '*'
+            runrefresh: yes
+    
+        - name: update all patches
+          community.general.zypper:
+            name: '*'
+            state: latest
+    
+    - name: add desired packages
+      community.general.zypper:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - less
+        - sudo
+        - vim
+
+    - name: include cloud-init
+      block:
+        - name: install cloud-init
+          community.general.zypper:
+            name: 'cloud-init'
+            state: latest
+
+        - name: setup cloud-init
+          ansible.builtin.systemd:
+            name: cloud-init
+            enabled: yes 
+
+    - name: reset machine-id
+      block:
+        - name: remove machine-id
+          ansible.builtin.copy:
+            content: ''
+            dest: /etc/machine-id
+            force: yes
+            owner: root
+            group: root
+            mode: '0444'
+    
+        - name: check dbus machine-id symlink
+          ansible.builtin.file:
+            path: /var/lib/dbus/machine-id
+            src: /etc/machine-id
+            state: link
+
+    - name: clean up RMT server registration and repositories
+      block:
+        - name: SUSEConnect public cloud module de registration
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/SUSEConnect
+              - --de-register
+              - -p
+              - sle-module-public-cloud/15.2/x86_64
+
+        - name: SUSEConnect de registration
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/SUSEConnect
+              - --de-register
+
+        - name: SUSEConnect cleanup
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/SUSEConnect
+              - --cleanup
+
+        - name: find zypper credentials
+          ansible.builtin.find:
+            paths: /etc/zypp/credentials.d
+            patterns: '*'
+          register: etc_zypp_credentials
+
+        - name: delete found zypper credentials
+          ansible.builtin.file:
+            path: '{{ item.path }}'
+            state: absent
+          with_items: '{{ etc_zypp_credentials.files }}'
+
+        - name: find remaining repositories
+          ansible.builtin.find:
+            paths: /etc/zypp/repos.d
+            patterns: '*'
+          register: etc_zypp_repos
+
+        - name: delete remaining repositories
+          ansible.builtin.file:
+            path: '{{ item.path }}'
+            state: absent
+          with_items: '{{ etc_zypp_repos.files }}'
+
+    - name: clean wicked iaid, duid, etc
+      block:
+        - name: find wicked xml stuff
+          ansible.builtin.find:
+            paths: /var/lib/wicked/
+            patterns: '*.xml'
+          register: wicked_xml_crap
+  
+        - name: delete found wicked xml stuff
+          ansible.builtin.file:
+            path: '{{ item.path }}'
+            state: absent
+          with_items: '{{ wicked_xml_crap.files }}'
+
+    - name: extra time
+      ansible.builtin.pause:
+        seconds: 120
