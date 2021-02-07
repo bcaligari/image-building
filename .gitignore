@@ -1,5 +1,5 @@
 .vscode
-.packer_cache/
+packer_cache/
 artifacts/
 .*.swp
 *~
