@@ -20,20 +20,36 @@
             name: '*'
             state: latest
     
-    - name: add desired packages
+    - name: install sudo
+      community.general.zypper:
+        name: sudo
+        state: latest
+
+    - name: make sure some essentials are present
       community.general.zypper:
         name: "{{ item }}"
         state: latest
       loop:
         - less
-        - sudo
         - vim
+
+    - name: include docker
+      block:
+        - name: install docker
+          community.general.zypper:
+            name: docker
+            state: latest
+
+        - name: enable docker
+          ansible.builtin.systemd:
+            name: docker
+            enabled: yes 
 
     - name: include cloud-init
       block:
         - name: install cloud-init
           community.general.zypper:
-            name: 'cloud-init'
+            name: cloud-init
             state: latest
 
         - name: setup cloud-init
@@ -67,6 +83,14 @@
               - --de-register
               - -p
               - sle-module-public-cloud/15.2/x86_64
+
+        - name: SUSEConnect containers module de registration
+          ansible.builtin.command:
+            argv:
+              - /usr/sbin/SUSEConnect
+              - --de-register
+              - -p
+              - sle-module-containers/15.2/x86_64
 
         - name: SUSEConnect de registration
           ansible.builtin.command:
@@ -103,6 +127,11 @@
             path: '{{ item.path }}'
             state: absent
           with_items: '{{ etc_zypp_repos.files }}'
+
+        - name: delete /etc/SUSEConnect
+          ansible.builtin.file:
+            path: /etc/SUSEConnect
+            state: absent
 
     - name: clean wicked iaid, duid, etc
       block:
